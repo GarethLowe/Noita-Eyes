@@ -20,6 +20,8 @@ from synth import (corpus, decrypt_autokey, decrypt_progressive,  # noqa: E402
 from h1_ciphertext_autokey import (bigram_rate, diff_segments,  # noqa: E402
                                    ioc_nonzero, shuffle_no_repeat)
 from shift_invariant_ngrams import classes, stats  # noqa: E402
+from gap_spectrum import count_chains, count_gap  # noqa: E402
+from deck_models import MECHANISMS, full_shuffle, run, summarise  # noqa: E402
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -188,6 +190,82 @@ class TestBatteriesHavePower(unittest.TestCase):
             adj = sum(1 for s in ctrl for i in range(1, len(s))
                       if s[i] == s[i - 1])
             self.assertGreater(adj, 0, kind)
+
+
+class TestGapSpectrum(unittest.TestCase):
+    def test_count_gap_matches_a_hand_worked_case(self):
+        self.assertEqual(count_gap([[1, 2, 3, 1, 5]], 3), 1)
+        self.assertEqual(count_gap([[1, 2, 3, 1, 5]], 2), 0)
+        self.assertEqual(count_gap([[7, 7, 7]], 1), 2)
+
+    def test_gaps_do_not_span_segments(self):
+        self.assertEqual(count_gap([[1, 2], [1, 2]], 2), 0)
+
+    def test_chains_detect_a_planted_state_recurrence(self):
+        """A repeated 4-block makes every coincidence chain into the next."""
+        block = [10, 20, 30, 40]
+        seq = block + block + block
+        self.assertEqual(count_chains([seq], 4), count_gap([seq], 4) - 1)
+
+    def test_no_chains_when_coincidences_are_isolated(self):
+        self.assertEqual(count_chains([[1, 9, 9, 9, 1, 8, 8, 8, 2]], 4), 0)
+
+    def test_observed_gap4_excess_is_present_and_dedup_survives(self):
+        segs = segments(load())
+        obs = count_gap(segs, 4)
+        expected = sum(max(0, len(s) - 4) for s in segs) / N
+        self.assertGreater(obs, 1.7 * expected)
+        self.assertEqual(count_chains(segs, 4), 0)
+
+
+class TestDeckModels(unittest.TestCase):
+    def test_top_protecting_mechanisms_produce_no_adjacent_repeats(self):
+        """The community's explanation of constraint 3, verified per mechanism."""
+        for label, mech in MECHANISMS:
+            if label in ("base rotate + swap", "RC4-like state"):
+                continue  # these deliberately do not protect the top card
+            segs = run(mech, [120, 90], random.Random(4))
+            adj = sum(1 for v in segs for i in range(1, len(v))
+                      if v[i] == v[i - 1])
+            self.assertEqual(adj, 0, label)
+
+    def test_mechanisms_that_ignore_the_top_card_break_constraint_3(self):
+        for label, mech in MECHANISMS:
+            if label not in ("base rotate + swap", "RC4-like state"):
+                continue
+            segs = run(mech, [400, 400], random.Random(4))
+            adj = sum(1 for v in segs for i in range(1, len(v))
+                      if v[i] == v[i - 1])
+            self.assertGreater(adj, 0, label)
+
+    def test_deck_output_is_always_a_valid_symbol(self):
+        for _, mech in MECHANISMS:
+            for v in run(mech, [60], random.Random(6)):
+                self.assertTrue(all(0 <= x < N for x in v))
+
+    def test_perfect_mixing_limit_has_a_flat_profile_above_gap_1(self):
+        prof, adj, _ = summarise(full_shuffle, [200, 200], seeds=8)
+        self.assertEqual(adj, 0)
+        self.assertEqual(prof[0], 0.0)
+        for k in range(1, 8):
+            self.assertAlmostEqual(prof[k], 1.0, delta=0.35)
+
+    def test_no_mechanism_reproduces_the_gap4_excess(self):
+        """The load-bearing negative: this is the H4 verdict in one assertion.
+
+        If some mechanism ever does clear this bar, the test fails loudly and
+        the notebook's verdict has to be revisited -- which is the point.
+        """
+        segs = segments(load())
+        lengths = [len(s) for s in segs]
+        obs_ratio = count_gap(segs, 4) / (
+            sum(max(0, len(s) - 4) for s in segs) / N)
+        self.assertGreater(obs_ratio, 1.7)
+        for label, mech in MECHANISMS:
+            prof, _, _ = summarise(mech, lengths, seeds=8)
+            self.assertFalse(1.7 <= prof[3] <= 2.3 and
+                             all(abs(prof[k] - 1.0) < 0.4 for k in (4, 5, 6, 7)),
+                             f"{label} now matches the observed profile")
 
 
 class TestDataIntegrity(unittest.TestCase):
