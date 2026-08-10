@@ -33,6 +33,8 @@ from h6_hybrid import (dec_ct_p4, dec_pt_p4, enc_ct_p4,  # noqa: E402
                        enc_pt_p4, enc_pt_p4_fix, enc_tab_ptk)
 from h6_hybrid import divergent_pair as h6_divergent_pair  # noqa: E402
 from eye_level import eye_stream, norm_ioc, pair_values  # noqa: E402
+from abstract_encodings import (compass_schemes, control_ring,  # noqa: E402
+                                cumsum_stream, walk_radius)
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -516,6 +518,46 @@ class TestEyeLevel(unittest.TestCase):
         segs = segments(load())
         flat = [x for s in segs for x in pair_values(eye_stream(s), 0)]
         self.assertLess(norm_ioc(flat, 25), 1.25)
+
+
+class TestAbstractEncodings(unittest.TestCase):
+    def test_cumsum_inverts_difference_encoding(self):
+        """diff then cumsum is the identity, so the class-B battery reads the
+        true plaintext when the hypothesis holds."""
+        rng = random.Random(2)
+        p = [rng.randrange(N) for _ in range(200)]
+        prev, enc = 0, []
+        for v in p:
+            enc.append((v - prev) % N)
+            prev = v
+        self.assertEqual(cumsum_stream([enc], N)[0], p)
+
+    def test_walk_radius_hand_worked(self):
+        # four steps around a unit square: positions (1,0),(1,1),(0,1),(0,0)
+        sq = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+        self.assertAlmostEqual(walk_radius(sq), (0.5) ** 0.5, places=9)
+
+    def test_straight_line_has_larger_radius_than_square(self):
+        line = [(1, 0)] * 4
+        sq = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+        self.assertGreater(walk_radius(line), walk_radius(sq))
+
+    def test_compass_family_has_15_distinct_schemes(self):
+        schemes = compass_schemes()
+        self.assertEqual(len(schemes), 15)
+        for _, m in schemes:
+            self.assertEqual(sorted(m.keys()), [0, 1, 2, 3, 4])
+            self.assertIn((0, 0), m.values())
+
+    def test_ring_battery_fires_on_difference_encoded_finnish(self):
+        obs, mean, sd = control_ring()
+        self.assertGreater((obs - mean) / sd, 10)
+
+    def test_observed_cumsum_is_flat_at_all_rings(self):
+        segs = segments(load())
+        for m in (83, 29, 26, 25, 21):
+            flat = [x for r in cumsum_stream(segs, m) for x in r]
+            self.assertLess(norm_ioc(flat, m), 1.1, f"ring {m}")
 
 
 class TestDataIntegrity(unittest.TestCase):

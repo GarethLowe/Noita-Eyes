@@ -4,6 +4,68 @@ Reverse-chronological. Entry format: date / hypothesis / method / result / verdi
 
 ---
 
+## 2026-08-10 — Abstract encodings: movement and hidden-value readings tested
+
+The challenge: a trigram value does not need to BE a character. It can be an
+instruction — a step through space, a rotation of a hidden wheel. The space of
+such readings factors into three classes, and each got its own treatment
+(`tools/abstract_encodings.py`).
+
+**Class A — fixed abstract maps.** Value → cell in a layout, letter on a
+keyboard, rune in a table: any *fixed* map is a monoalphabetic substitution,
+whatever the map "means". Constraint 2 (flat frequencies) killed substitution
+long ago. Dead on arrival; recorded so nobody re-derives it.
+
+**Class B — cumulative readings ("shifting hidden values"). FALSIFIED.**
+Each value rotates a pointer on an m-ring and the plaintext is the pointer
+position: p[i] = (c[0]+...+c[i]) mod m. This is the exact dual of the
+first-difference test that killed H1, and it had not been tested. If true, the
+running sum must be lumpy like language. Tested at ring sizes 83, 29, 26, 25,
+21 against the constrained-shuffle null:
+
+| ring m | 83 | 29 | 26 | 25 | 21 |
+|---|---|---|---|---|---|
+| IoC z | −0.91 | −0.41 | −0.33 | +0.37 | −0.06 |
+
+Flat everywhere. The positive control — Finnish difference-encoded onto the
+83-ring, exactly the construction the hypothesis posits — reads IoC 1.87
+against a null of 1.03, **z = +90**. The battery has overwhelming power and
+the data has nothing.
+
+**Class C — spatial walks ("moving through space"). NOT SUPPORTED.** Each eye
+is a step in 2D and the message is a path. The orientation→direction map is
+unknown, but boundedness survives any map choice: a walk that draws glyphs
+stays in a small box (radius of gyration far below a shuffled walk); a
+line-tracing route holds directions in runs (radius far above). Tested 17
+schemes — all 15 distinct compass+stay assignments (up to square symmetry),
+pentagon directions at 72°, and digit-pairs as (dx, dy) — both tails,
+Bonferroni over 17.
+
+- z range across all schemes: **−0.99 to +1.41**. Nothing survives correction;
+  nothing comes close.
+- Controls: a boxed "drawing" walk reads z = **−8.6**; a stroke-tracing walk
+  reads z = **+13.3**. Both tails have strong power.
+
+**Honest limits, stated exactly.** (1) The shuffle null preserves the step
+multiset, hence the exact endpoint — so pure drift is invisible to this test.
+But a drift-only path with random step order carries no message; a meaningful
+route differs from noise by stroke structure, which the test sees at z = 13.
+(2) Direction maps outside the tested family (variable step sizes, turtle
+turn-relative steps) are not covered. Turtle-style relative movement is the
+one abstract reading left untested; its natural statistic is autocorrelation
+of turning, worth a tool if the idea resurfaces. (3) An abstract reading
+*followed by a strong cipher* is indistinguishable from the cipher itself —
+then the cipher is the puzzle again, which is the main queue.
+
+**Net effect on the picture.** Every history-free reading of the symbols —
+direct, grid, cumulative, spatial — is now tested and negative, while the
+corpus's structural facts (zero adjacent repeats, re-convergence, shared
+headers with differing position 0) all point at a keyed cipher with
+plaintext-derived state. The abstract-encoding door is closed to everything
+except turtle-relative movement and encrypted-then-encoded hybrids.
+
+---
+
 ## 2026-08-10 — H6 hybrids crunched; eye-level grid alphabets tested and rejected
 
 Two jobs this session: run the period-4-plus-chaining hybrids against real
@@ -567,7 +629,8 @@ differences preserves their multiset and makes the test vacuous (sd = 0).
 - `tools/finnish.py`, `tools/finnish_litmus.py` — Finnish syllable model and the real-plaintext litmus battery.
 - `tools/h6_hybrid.py` — the hybrid battery with best-key analysis.
 - `tools/eye_level.py` — single-eye, pair and grid-alphabet readings.
-- `tools/test_tools.py` — 63 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
+- `tools/abstract_encodings.py` — cumulative-pointer and spatial-walk batteries with two-tailed controls.
+- `tools/test_tools.py` — 69 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
 
 `python3 tools/verify_constraints.py` — 23/23 pass.
-`python3 tools/test_tools.py` — 63/63 pass.
+`python3 tools/test_tools.py` — 69/69 pass.
