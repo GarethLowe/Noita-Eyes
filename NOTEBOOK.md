@@ -4,6 +4,105 @@ Reverse-chronological. Entry format: date / hypothesis / method / result / verdi
 
 ---
 
+## 2026-08-10 — Re-convergence bounds the state. The deck theory is in serious trouble.
+
+**Prompted by a prior correction, not by new data.** The author is a small
+indie game developer, not a cryptographer. That should have been weighting the
+search from the start, and it was not: the previous entry ended by proposing to
+characterise a shuffle group algebraically, which is a search for a mechanism
+no game developer would build. Re-reading the corpus under the corrected prior
+found something I had walked past twice.
+
+**The observation.** Constraint 4 is recorded as a list of shared runs. What
+matters is not the shared headers but what happens *after* two messages
+diverge:
+
+```
+E1 vs W1:  pos 1-24 match | 25-28 differ | 29-32 MATCH | 33-36 differ | 37-49 MATCH
+E4 vs E5:  pos 1-20 match | then re-converges three separate times
+```
+
+Five re-convergence runs across the corpus, the longest 13 symbols. **Two
+encryptions that have diverged come back into exact agreement.** That is a
+bound on the state, and a brutal one.
+
+| model | states | cost of a 13-long re-convergence |
+|---|---|---|
+| stateless, position-keyed | 1 | free |
+| plaintext-chained (H2) | n/a — state is a function of plaintext | free, one symbol after the plaintext rejoins |
+| ciphertext-chained autokey | 83 | ~1/83 per event, then self-sustaining |
+| **deck / group autokey over S₈₃** | **83! ≈ 10¹²⁴** | **83⁻¹³ ≈ 1.1 × 10⁻²⁵** |
+
+Simulated directly in `tools/resync_analysis.py`, encrypting two plaintexts
+that diverge and rejoin, from a shared initial deck as constraint 4 requires:
+the deck cipher reproduces the header and then **never re-converges**;
+ciphertext-chained autokey likewise; plaintext-chained autokey re-converges for
+free, every time, one symbol after the plaintext does — reproducing the
+observed shape.
+
+**Verdict: the deck / group-autokey framing (H4) is effectively FALSIFIED,** and
+by an argument that has nothing to do with the gap spectrum I spent the previous
+entry on. A large-state chained cipher cannot produce a 13-symbol
+re-convergence. The community's model is attractive because it explains
+constraint 3 for free, but it cannot survive constraint 4 read properly. The
+cipher's state does not depend on ciphertext history.
+
+**So H2 came off the queue and got tested.** Sub-case `c[i] = p[i] + p[i-1]` is
+completely determined by the single unknown `p[0]`, and the IoC of the even- and
+odd-index plaintext subsequences is invariant to that unknown — so it needs no
+guessing. Pooled: **1.10 / 1.09**, against a language-like positive control
+through the same construction at **2.75 / 2.73** and a uniform reference at 1.00.
+**Sub-case 1 FALSIFIED.**
+
+Sub-case `c[i] = π(p[i] + p[i-1])` is **OPEN and is now the leading hypothesis.**
+It fits the re-convergence evidence exactly, it is the kind of thing a
+programmer builds in an afternoon (shuffle a table once, add the previous
+symbol, look it up), and it survives the IoC argument that killed H1 — there the
+first difference *was* the plaintext, whereas here `c[i] - c[i-1] = p[i] - p[i-2]`,
+a difference of plaintext symbols, which is expected to look flat even when the
+plaintext does not. Note this also rehabilitates the word "deck": the shuffled
+deck of 83 would be the *table*, shuffled once, rather than re-shuffled per
+letter.
+
+**The honest problem with it.** Zero adjacent repeats requires
+`F(p[i],p[i-1]) ≠ F(p[i-1],p[i-2])` at all 1027 positions, which for `F = π(a+b)`
+reduces to `p[i] ≠ p[i-2]` always. Over a syllabary of ~83 symbols roughly 25
+distance-2 repeats would be expected in 1027 symbols. Zero is observed. So the
+leading hypothesis does not yet explain constraint 3, and I am not going to
+pretend otherwise.
+
+**Which raises a data-provenance question that should be settled before more
+key search.** Constraints 1 and 3 — exactly 83 contiguous values, and exactly
+zero adjacent repeats — are both properties of *one particular* trigram reading
+order, chosen out of ~86,000 candidates because it produced a gapless 0-82
+range. Regrouping the eyes changes which trigrams are adjacent, so constraint 3
+is not invariant to that choice. If it is partly a selection artifact, the
+inference "the output must depend on the previous output" weakens
+substantially, and with it the reason H2 looks uncomfortable. **Testing this
+needs the raw per-eye orientation sequences, which this repo does not have** —
+`data/eye_trigrams.csv` is already decoded. Obtaining them is now the highest-
+value data task in the project.
+
+**Two smaller results from the same session.**
+
+A concentration hypothesis for gap 4, tested and dead: if the increments
+`d[i] = c[i]-c[i-1]` clustered near 83/4 ≈ 20.75, four steps would complete a
+turn and the whole spectrum (2 and 3 suppressed, 4 enhanced) would follow from
+one number. The circular mean of d does sit at **20.33**, seductively close —
+but `|φ(1)| = 0.046` with Rayleigh p = 0.15, and the implied gap-4 boost is
+~5 × 10⁻⁶ against the factor of 2 observed. Coincidence. The gap-4 excess comes
+from *dependence* between successive increments, not from their marginal
+distribution.
+
+A bug fix that did not change a verdict: the "perfect mixing limit" mechanism in
+the previous entry's H4 table ignored the plaintext entirely, making it a
+keystream generator rather than a cipher. Replaced with a genuine group autokey
+drawing one random generator per plaintext symbol, constrained to σ_p(0) ≠ 0.
+The corrected profile is still flat (1.09/1.04/0.99/0.93 at gaps 2-5), so the
+conclusion stands, but the earlier row was not measuring what its label claimed.
+
+---
+
 ## 2026-08-10 — H4 / community deck theory, and H3 closed out
 
 **The community theory, as stated.** The leading candidate is a **deck of 83
@@ -245,7 +344,9 @@ differences preserves their multiset and makes the test vacuous (sd = 0).
 - `tools/shift_invariant_ngrams.py` — shift-class repeat counts, the additive-family instrument.
 - `tools/gap_spectrum.py` — repeat-gap spectrum with nulls, correction, per-message breakdown and the chain test.
 - `tools/deck_models.py` — nine deck/shuffle mechanisms fingerprinted against the observed spectrum.
-- `tools/test_tools.py` — 33 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
+- `tools/resync_analysis.py` — re-convergence extraction and the state-size bound.
+- `tools/h2_plaintext_autokey.py` — H2 sub-case 1 closed form, sub-case 2 scoped.
+- `tools/test_tools.py` — 42 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
 
 `python3 tools/verify_constraints.py` — 23/23 pass.
-`python3 tools/test_tools.py` — 33/33 pass.
+`python3 tools/test_tools.py` — 42/42 pass.

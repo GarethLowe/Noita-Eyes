@@ -108,16 +108,30 @@ def rc4_like(deck, p, state):
 
 
 def full_shuffle(deck, p, state):
-    """Reshuffle completely each step, rejecting a repeated top card.
+    """Group autokey with a random generator per plaintext symbol.
 
-    The perfect-mixing limit: it satisfies constraint 3 by construction and
-    should leave every gap above 1 at the chance rate.
+    The strong-mixing limit of the community's model, and the honest one: the
+    deck is permuted by sigma_p, a permutation drawn once per plaintext symbol
+    and reused whenever that symbol recurs, constrained to sigma_p(0) != 0 so
+    the top card always moves. Being a genuine function of the plaintext, it is
+    an actual cipher -- an earlier version reshuffled at random and ignored p,
+    which made it a keystream generator with no message in it.
     """
-    prev = deck[0]
-    while True:
-        state["rng"].shuffle(deck)
-        if deck[0] != prev:
-            return
+    gens = state.get("gens")
+    if gens is None:
+        rng = state["rng"]
+        gens = {}
+        state["gens"] = gens
+    if p not in gens:
+        rng = state["rng"]
+        while True:
+            sigma = list(range(N))
+            rng.shuffle(sigma)
+            if sigma[0] != 0:
+                break
+        gens[p] = sigma
+    sigma = gens[p]
+    deck[:] = [deck[sigma[i]] for i in range(N)]
 
 
 MECHANISMS = [
@@ -129,7 +143,7 @@ MECHANISMS = [
     ("base rotate + swap", base_rotate_then_swap),
     ("riffle, cut at p", riffle_cut_by_p),
     ("RC4-like state", rc4_like),
-    ("full reshuffle (mixing limit)", full_shuffle),
+    ("group autokey, random gens", full_shuffle),
 ]
 
 

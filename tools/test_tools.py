@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from eyes import N, load, ioc  # noqa: E402
+from eyes import N, ORDER, load, ioc  # noqa: E402
 import dedup  # noqa: E402
 from dedup import segments, shared_mask  # noqa: E402
 from synth import (corpus, decrypt_autokey, decrypt_progressive,  # noqa: E402
@@ -22,6 +22,9 @@ from h1_ciphertext_autokey import (bigram_rate, diff_segments,  # noqa: E402
 from shift_invariant_ngrams import classes, stats  # noqa: E402
 from gap_spectrum import count_chains, count_gap  # noqa: E402
 from deck_models import MECHANISMS, full_shuffle, run, summarise  # noqa: E402
+from resync_analysis import (agreement_runs, deck_pair,  # noqa: E402
+                             divergent_pair, reconvergences)
+from h2_plaintext_autokey import derive, parity_iocs  # noqa: E402
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -266,6 +269,84 @@ class TestDeckModels(unittest.TestCase):
             self.assertFalse(1.7 <= prof[3] <= 2.3 and
                              all(abs(prof[k] - 1.0) < 0.4 for k in (4, 5, 6, 7)),
                              f"{label} now matches the observed profile")
+
+
+class TestResync(unittest.TestCase):
+    """The state-size argument, which is now the project's main structural claim."""
+
+    def test_agreement_runs_skip_position_zero_and_respect_min_run(self):
+        a = [1, 5, 5, 5, 9, 2]
+        b = [7, 5, 5, 5, 8, 3]
+        self.assertEqual(agreement_runs(a, b, min_run=3), [(1, 3, 3)])
+        self.assertEqual(agreement_runs(a, b, min_run=4), [])
+
+    def test_reconvergences_exclude_the_shared_header(self):
+        a = [0, 1, 2, 3, 9, 9, 7, 7, 7]
+        b = [5, 1, 2, 3, 4, 4, 7, 7, 7]
+        self.assertEqual(agreement_runs(a, b), [(1, 3, 3), (6, 8, 3)])
+        self.assertEqual(reconvergences(a, b), [(6, 8, 3)])
+
+    def test_the_observed_reconvergences_are_present(self):
+        msgs = load()
+        e1w1 = reconvergences(msgs["East 1"], msgs["West 1"])
+        self.assertEqual([(s, e, n) for s, e, n in e1w1],
+                         [(29, 32, 4), (37, 49, 13)])
+        self.assertEqual(len(reconvergences(msgs["East 4"], msgs["East 5"])), 3)
+
+    def test_plaintext_chaining_reconverges_but_ciphertext_chaining_does_not(self):
+        """The load-bearing discriminator behind the H2 pivot."""
+        rng = random.Random(3)
+        pa, pb = divergent_pair(rng)
+        pt = [[(p[i] + p[i - 1]) % N for i in range(1, len(p))] for p in (pa, pb)]
+        self.assertTrue(reconvergences(*pt),
+                        "plaintext chaining must rejoin after divergence")
+
+        ct = []
+        for p in (pa, pb):
+            c = [0]
+            for v in p:
+                c.append((v + c[-1]) % N)
+            ct.append(c)
+        self.assertEqual(reconvergences(*ct), [],
+                         "ciphertext chaining must not rejoin by itself")
+
+    def test_deck_cipher_cannot_reconverge_from_a_shared_initial_deck(self):
+        rng = random.Random(3)
+        pa, pb = divergent_pair(rng)
+        ca, cb = deck_pair(full_shuffle, [pa, pb], seed=11)
+        self.assertEqual(reconvergences(ca, cb), [])
+
+    def test_deck_pair_reproduces_shared_headers(self):
+        """Identical plaintext prefix from one initial deck must match."""
+        rng = random.Random(3)
+        pa, pb = divergent_pair(rng)
+        ca, cb = deck_pair(full_shuffle, [pa, pb], seed=11)
+        self.assertEqual(ca[:25], cb[:25])
+
+
+class TestH2(unittest.TestCase):
+    def test_derive_inverts_the_plaintext_autokey(self):
+        rng = random.Random(5)
+        p = language_like(rng, 80, alphabet_size=45)
+        c = [p[0]] + [(p[i] + p[i - 1]) % N for i in range(1, len(p))]
+        self.assertEqual(derive(c, p[0]), p)
+
+    def test_parity_iocs_do_not_depend_on_the_p0_guess(self):
+        c = load()["East 1"]
+        base = parity_iocs(c)
+        for guess in (0, 7, 40, 82):
+            p = derive(c, guess)
+            self.assertAlmostEqual(ioc(p[0::2]), base[0], places=9)
+            self.assertAlmostEqual(ioc(p[1::2]), base[1], places=9)
+
+    def test_h2_battery_separates_control_from_real_data(self):
+        rng = random.Random(0)
+        ctrl = language_like(rng, 1000, alphabet_size=45)
+        cc = [ctrl[0]] + [(ctrl[i] + ctrl[i - 1]) % N
+                          for i in range(1, len(ctrl))]
+        self.assertGreater(min(parity_iocs(cc)), 2.0)
+        for k in ORDER:
+            self.assertLess(max(parity_iocs(load()[k])), 1.5, k)
 
 
 class TestDataIntegrity(unittest.TestCase):
