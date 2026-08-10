@@ -32,11 +32,18 @@ Run `python3 tools/verify_constraints.py` after any change to data handling. All
 
 ## Hypothesis queue (work in order, document each verdict)
 
-1. Ciphertext autokey over Z83: c[i] = p[i] + f(c[i-1]) mod 83 for various f (identity, affine, table lookup). Note c[i] = p[i] + c[i-1] yields zero adjacent repeats iff plaintext never uses symbol 0 - directly consistent with constraint 3. Position 0 excluded from the chain per constraint 4.
+1. ~~Ciphertext autokey over Z83: c[i] = p[i] + f(c[i-1]) mod 83 for various f (identity, affine, table lookup).~~ **FALSIFIED 2026-08-10** for all affine f. Constraint 3 leaves only the pure shift (proof: 83 is prime, so g(x)=x-f(x) is onto for every multiplier a≠1); the pure shift makes the plaintext the ciphertext first difference, whose IoC is 0.997 against a positive control at 3.92. Still open: non-affine f whose image avoids the plaintext support. See NOTEBOOK.md.
 2. Plaintext autokey variants seeded by the position-0 nonce.
-3. Alberti / progressive-shift disk: substitution alphabet rotates by a schedule (fixed increment, plaintext-driven, or ciphertext-driven), nonce sets initial rotation.
+3. Alberti / progressive-shift disk: substitution alphabet rotates by a schedule (fixed increment, plaintext-driven, or ciphertext-driven), nonce sets initial rotation. **Fixed-increment case FALSIFIED (preliminary) 2026-08-10** — produces 23-27 adjacent repeats against constraint 3's zero, and 143 shift-invariant trigram classes against 62 observed. Plaintext- and ciphertext-driven schedules untouched; resume here.
 4. Chained permutation state machine: state is a permutation of Z83 updated per symbol (lagged Fibonacci, RC4-like, LCG-driven rotor).
 5. Codebook: 83 values index words/syllables in a key text (orb room runes, in-game books). Finnish has ~50 common syllables; 83 symbols suits a syllabary better than a 29-letter alphabet - consider syllable-level plaintext models alongside letter-level.
+
+## Methodology traps found the hard way
+
+- **Dedup before any repetition statistic.** The positionally-shared header runs (constraint 4) inflate every n-gram and bigram statistic. Use `tools/dedup.py`, which strips runs of >=2 positional matches with an earlier message. A threshold of 5 is not tight enough: a 4-long E1/W1 match at position 29 alone manufactured a "significant" shift-invariant 4-gram repeat.
+- **Null models must be applied to the ciphertext, then transformed** - not to the derived sequence. Shuffling a derived difference sequence preserves its multiset, so an IoC test against it has sd = 0 and is vacuous.
+- **Nulls must respect constraint 3.** Plain shuffling admits adjacent repeats the real data cannot have. Use `shuffle_no_repeat`.
+- **No negative result counts without a positive control** on synthetic data where the hypothesis holds by construction (`tools/synth.py`). `tools/test_tools.py` asserts each battery separates its control from the real data.
 
 ## Cribs and priors
 
