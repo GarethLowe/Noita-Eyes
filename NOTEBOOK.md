@@ -4,6 +4,131 @@ Reverse-chronological. Entry format: date / hypothesis / method / result / verdi
 
 ---
 
+## 2026-08-10 — Reading order validated; real Finnish replaces the synthetic control; gap 4 may be linguistic
+
+Three challenges taken up: that the community may be wrong about trigrams, that
+the plaintext is Finnish rather than English, and that the messages might read
+backwards or vertically.
+
+### The raw eye stream was recoverable all along
+
+Last entry called obtaining the per-eye orientations "the highest-value data
+task open". That was wrong, and cheaply so: a trigram is a 3-digit base-5
+number, so `v = 25a + 5b + c` inverts it. The eye stream is reconstructible from
+the decoded CSV, and alternative groupings can be tested — 6 spatial orders of
+the digits × 3 eye offsets. `tools/reading_order.py`.
+
+| digit order | offset | distinct | range | contiguous | adjacent repeats |
+|---|---|---|---|---|---|
+| (0,1,2) | **0** | **83** | **0-82** | **YES** | **0** |
+| (0,1,2) | 1 | 98 | 0-123 | no | 6 |
+| (0,1,2) | 2 | 85 | 0-116 | no | 12 |
+| any other order | 0 | 83 | non-contiguous | no | 0 |
+| any order | 1 or 2 | 85-100 | wide | no | 4-12 |
+
+Two things fall out. Only offset 0 gives zero adjacent repeats — every shifted
+re-cut sits at chance (4-12 against ~12 expected). And only offset 0 with digit
+order (0,1,2) gives the contiguous 0-82 alphabet. Since the community selected
+the reading on **contiguity** alone, the repeat-free property is *independent*
+corroboration that the grouping is right. **The trigram consensus survives.**
+Caveat: this covers linear re-cuts of the eye stream, not every spatial
+traversal of the physical triangular layout, so it narrows the provenance worry
+rather than closing it.
+
+### Direction and vertical reads
+
+Summed over all 36 message pairs, shared runs aligned from the **start** total
+240 symbols; aligned from the **end**, exactly 0. All shared material sits at
+one end. Reversal maps "header preceded by a per-message identifier at position
+0" onto "footer followed by a trailing identifier", so the data alone does not
+decide direction — but an initialisation value at the *start* is the natural
+construction, and position 0 is exactly where the odd-one-out symbol lives.
+
+Columnar reads were tested at every width from 2 to 40. None reaches zero
+adjacent repeats; the best manage 5, against a chance baseline of 12.0 ± 3.7 and
+the linear read's 0. **A vertical read is not supported.** Neat internal
+consistency check: width 4 is the *worst* of all widths at 27 repeats, which is
+just constraint 5 restated — a columnar read at width 4 sets the gap-4
+coincidences side by side.
+
+### Real Finnish, at last
+
+Everything until now used `synth.language_like`, which is lumpy like a language
+but is not Finnish. Now built from Project Gutenberg: Kalevala (verse) and
+*Seitsemän veljestä* (prose), syllabified with a standard Finnish
+rule-approximation. `tools/finnish.py`, cached table in
+`data/finnish_syllables.json`.
+
+**A trap avoided.** Kalevala's syllable gap profile spikes at **gap 8 (7.44×
+chance)** and gap 4 (3.42×). That is not language — it is the trochaic
+tetrameter of the Kalevala metre. Using verse as a plaintext control would have
+manufactured exactly the periodicity we are hunting. Prose is much flatter.
+
+Finnish prose syllable repeat rates, obs/chance:
+
+| gap | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| prose | 0.33 | 1.28 | 1.76 | **1.81** | 1.65 | 1.69 | 1.52 | 1.55 |
+| eye ciphertext | 0.00 | 0.48 | 0.78 | **1.98** | 1.00 | 1.21 | 1.13 | 1.03 |
+
+Finnish repeats itself at *every* distance above 1 — a plateau, not a spike,
+with a mild maximum at 4. The ciphertext sits at chance for gaps 5-8. So the
+cipher destroys most plaintext repetition, and gap 4 is the one distance where
+it does not.
+
+### That reframes constraint 5, and demotes a claim I made
+
+Two entries ago I called the gap-4 excess "the sharpest mechanism fingerprint in
+the corpus". That may be wrong: **it could be a plaintext property showing
+through.** Finnish prose already peaks at distance 4, and the simplest cipher
+that would pass distance-4 repeats through while scrambling everything else is a
+**period-4 repeating key** — a four-symbol key, which is about as
+naive-developer as a construction gets.
+
+Litmus test on real Finnish (`tools/finnish_litmus.py`), 3017 syllable symbols:
+
+| | IoC | g2 | g3 | g4 | g5 | g6 | g7 | g8 | adj/1027 |
+|---|---|---|---|---|---|---|---|---|---|
+| Finnish plaintext | 1.77 | 2.35 | 2.52 | 3.23 | 1.60 | 2.49 | 1.11 | 1.22 | 6.1 |
+| H2: π(p[i]+p[i-1]) | 1.44 | 1.67 | 2.38 | 2.29 | 1.77 | 2.13 | 1.10 | 0.21 | 26.0 |
+| period-4 additive key | 1.15 | 1.40 | 1.05 | **3.23** | 0.91 | 0.98 | 0.68 | 1.22 | 10.9 |
+| **OBSERVED** | **1.02** | 0.48 | 0.78 | **1.98** | 1.00 | 1.21 | 1.13 | 1.03 | **0** |
+
+The period-4 key is the only candidate that reproduces the *shape*: gap 4
+elevated, everything else near chance. It does it by inheriting the plaintext's
+distance-4 repeats untouched while the key scrambles all other distances. It
+still fails constraint 3 outright (10.9 adjacent repeats per 1027 against zero),
+and gaps 8 and 12 ought to be elevated too — observed 1.03 and 0.77, which is
+against it, though with ~10 events per gap the data is thin enough that I would
+not call this settled either way.
+
+**Verdict: constraint 5 downgraded from "mechanism fingerprint" to "unresolved —
+plausibly plaintext".** A period-4 key component is now a live lead, and it is
+worth noting the community independently reported weak evidence for a repeating
+key of length 14, which is a similar shape of claim.
+
+### A setback for the leading hypothesis
+
+H2's surviving sub-case `c[i] = π(p[i] + p[i-1])` was promoted last entry on the
+strength of the re-convergence argument. Run over real Finnish it **does not
+reproduce constraint 2**: IoC 1.44 where the messages read 1.02. It also
+inherits the plaintext's distance-2 repeats as adjacent ciphertext repeats — 26
+per 1027 against the required zero. Measured, not estimated: prose gives 7.7
+distance-2 syllable repeats per 1027 over the full inventory, rising to 26 once
+restricted to an 83-syllable alphabet.
+
+So H2 keeps its one strong argument (it is the only tested model that
+re-converges for free) and has now failed two of the five constraints. It stays
+the leading hypothesis because nothing else explains re-convergence, but it is
+not comfortable and the IoC gap is a real problem, not a detail.
+
+**Caveat on all of the above.** The syllabary model is the top 83 syllables of
+one 19th-century novel, covering 52% of the stream, with the remainder cut out.
+A syllabary the developer actually chose would differ. These numbers are the
+right order of magnitude, not precise predictions.
+
+---
+
 ## 2026-08-10 — Re-convergence bounds the state. The deck theory is in serious trouble.
 
 **Prompted by a prior correction, not by new data.** The author is a small
@@ -346,7 +471,9 @@ differences preserves their multiset and makes the test vacuous (sd = 0).
 - `tools/deck_models.py` — nine deck/shuffle mechanisms fingerprinted against the observed spectrum.
 - `tools/resync_analysis.py` — re-convergence extraction and the state-size bound.
 - `tools/h2_plaintext_autokey.py` — H2 sub-case 1 closed form, sub-case 2 scoped.
-- `tools/test_tools.py` — 42 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
+- `tools/reading_order.py` — grouping, direction and columnar tests.
+- `tools/finnish.py`, `tools/finnish_litmus.py` — Finnish syllable model and the real-plaintext litmus battery.
+- `tools/test_tools.py` — 53 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
 
 `python3 tools/verify_constraints.py` — 23/23 pass.
-`python3 tools/test_tools.py` — 42/42 pass.
+`python3 tools/test_tools.py` — 53/53 pass.

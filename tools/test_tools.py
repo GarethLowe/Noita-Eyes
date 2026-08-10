@@ -8,6 +8,7 @@ negative, so that check is the one guarding the project's conclusions.
 import random
 import sys
 import unittest
+from itertools import permutations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -25,6 +26,9 @@ from deck_models import MECHANISMS, full_shuffle, run, summarise  # noqa: E402
 from resync_analysis import (agreement_runs, deck_pair,  # noqa: E402
                              divergent_pair, reconvergences)
 from h2_plaintext_autokey import derive, parity_iocs  # noqa: E402
+from reading_order import (adjacent, columnar, digits,  # noqa: E402
+                           regroup, shared_from_end, shared_from_start)
+from finnish import load_table, normalise, syllabify  # noqa: E402
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -347,6 +351,79 @@ class TestH2(unittest.TestCase):
         self.assertGreater(min(parity_iocs(cc)), 2.0)
         for k in ORDER:
             self.assertLess(max(parity_iocs(load()[k])), 1.5, k)
+
+
+class TestReadingOrder(unittest.TestCase):
+    def test_digits_invert_every_trigram(self):
+        for v in range(N):
+            a, b, c = digits(v)
+            self.assertEqual(25 * a + 5 * b + c, v)
+            self.assertTrue(all(0 <= d < 5 for d in (a, b, c)))
+
+    def test_offset_zero_roundtrips_to_the_original_messages(self):
+        msgs = load()
+        self.assertEqual(regroup(msgs, (0, 1, 2), 0), [msgs[k] for k in ORDER])
+
+    def test_only_offset_zero_is_repeat_free(self):
+        """The grouping check: shifted re-cuts land at chance."""
+        msgs = load()
+        for order in ((0, 1, 2), (2, 1, 0), (1, 0, 2)):
+            self.assertEqual(adjacent(regroup(msgs, order, 0)), 0, str(order))
+            for off in (1, 2):
+                self.assertGreater(adjacent(regroup(msgs, order, off)), 0,
+                                   f"{order} offset {off}")
+
+    def test_digit_permutation_cannot_change_adjacency(self):
+        """Sanity: permuting digits is a bijection, so repeats are invariant."""
+        msgs = load()
+        for order in permutations(range(3)):
+            self.assertEqual(adjacent(regroup(msgs, order, 0)), 0)
+
+    def test_shared_material_is_at_the_start_not_the_end(self):
+        msgs = load()
+        s = sum(shared_from_start(msgs[a], msgs[b])
+                for i, a in enumerate(ORDER) for b in ORDER[i + 1:])
+        e = sum(shared_from_end(msgs[a], msgs[b])
+                for i, a in enumerate(ORDER) for b in ORDER[i + 1:])
+        self.assertGreater(s, 200)
+        self.assertEqual(e, 0)
+
+    def test_no_columnar_width_beats_the_linear_read(self):
+        msgs = load()
+        for w in range(2, 41):
+            self.assertGreater(adjacent([columnar(msgs[k], w) for k in ORDER]),
+                               0, f"width {w}")
+
+
+class TestFinnish(unittest.TestCase):
+    def test_syllabifier_on_known_words(self):
+        self.assertEqual(syllabify("kalevala"), ["ka", "le", "va", "la"])
+        self.assertEqual(syllabify("suomi"), ["suo", "mi"])
+        self.assertEqual(syllabify("lumikki"), ["lu", "mik", "ki"])
+        self.assertEqual(syllabify("nolla"), ["nol", "la"])
+
+    def test_syllables_reassemble_into_the_word(self):
+        for w in ("seitseman", "veljesta", "tuntematon", "hyvaa", "aiti"):
+            self.assertEqual("".join(syllabify(w)), w)
+
+    def test_normalise_strips_non_finnish_characters(self):
+        self.assertEqual(normalise("Hei, maailma! 123").split(),
+                         ["hei", "maailma"])
+
+    def test_cached_table_is_present_and_sane(self):
+        t = load_table()
+        self.assertEqual(len(t["top83"]), N)
+        self.assertGreater(t["coverage_top83"], 0.4)
+        # Finnish very rarely repeats a syllable immediately...
+        self.assertLess(t["rep_gap1"], t["rep_gap2"])
+        # ...but repeats at distance 2 and 4 well above that.
+        self.assertGreater(t["rep_gap2"] * 1027, 3)
+
+    def test_finnish_distance2_repeats_are_the_h2_obstacle(self):
+        """Quantifies why H2 struggles: the data demands zero, Finnish gives more."""
+        t = load_table()
+        self.assertGreater(t["rep_gap2"] * 1027, 5,
+                           "if this drops near zero, H2's obstacle dissolves")
 
 
 class TestDataIntegrity(unittest.TestCase):
