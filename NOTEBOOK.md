@@ -4,6 +4,98 @@ Reverse-chronological. Entry format: date / hypothesis / method / result / verdi
 
 ---
 
+## 2026-08-10 — H6 hybrids crunched; eye-level grid alphabets tested and rejected
+
+Two jobs this session: run the period-4-plus-chaining hybrids against real
+Finnish, and test the challenge that trigrams are wrong altogether — single
+eyes or eye-pairs as characters in a grid alphabet.
+
+### H6: the hybrid battery (`tools/h6_hybrid.py`)
+
+Six candidates over Z83, real Finnish prose syllables, 30 seeds, message
+lengths matching the corpus. Constraints to hit: per-message IoC ≤ 1.07 (c2),
+zero adjacent repeats (c3), re-convergence (c4), gap-4 ≈ 2.0 with other gaps
+near chance (c5, CI low 1.73).
+
+| candidate | IoC | adj/1027 | g4 | reconverges |
+|---|---|---|---|---|
+| period-4 only (stateless) | 1.167 | 12.6 | 1.70 | 100% |
+| ct-chain + p4 | 1.001 | 12.6 | 1.00 | **0%** |
+| pt-chain + p4 | 1.067 | 12.3 | 1.29 | 100% |
+| table variants of the above | 1.067-1.069 | 12.2 | 1.29 | 100% |
+| **pt-chain + p4 + collision fix** | **1.049** | **0.0** | 1.28 | 97% |
+| OBSERVED | ≤1.07 | 0.0 | 1.98 | yes |
+
+The **collision-fix variant** — `c[i] = p[i] + p[i-1] + k[i mod 4]`, then
+"if it equals the previous output, bump it by one" — is the first construction
+in this project to pass constraints 1-4 simultaneously. The fix is exactly the
+kind of patch a game developer writes, it guarantees c3 by construction, and it
+barely disturbs anything else. Re-convergence survives because the fix depends
+on the previous output only at collisions (~1/83 of positions).
+
+**Where it fails: the gap-4 magnitude.** It produces the right *shape* (spike
+at 4 only, everything else at chance) but at 1.28 against an observed 1.98
+(bootstrap CI low 1.73). The reason is structural: plaintext chaining turns the
+gap-4 statistic into a *pair-sum* repeat, and two-syllable units repeat at
+distance 4 far less often than single syllables. Tested with verse plaintext
+(Kalevala) on the chance it boosts 4-periodicity: g4 stays at 1.27. Meanwhile
+the stateless period-4 key over verse nails g4 (2.17) but fails IoC (1.22) and
+c3 (13 repeats). **The tension is now exact: flattening the IoC to 1.0 halves
+the gap-4 signal; preserving the gap-4 signal leaves the IoC too high.**
+
+**Verdict: H6 as tested INCONCLUSIVE-LEANING-NEGATIVE.** pt-chain+p4+fix is
+the best surviving construction and stays on the board, but it needs the true
+plaintext to repeat two-syllable units at distance 4 about twice as often as
+ordinary prose or verse does. A short formulaic message could do that; nothing
+in the corpus proves it.
+
+**Best-key analysis, worth keeping:** for ct-chain+p4 a chosen key can reach
+0.7 adjacent repeats per 1027 (a lucky key nearly explains c3 alone!) — but
+ct-chaining re-converges in 0% of trials, so constraint 4 kills that entire
+branch regardless. The re-convergence argument keeps doing the heavy lifting.
+
+### Eye-level readings: the grid-alphabet challenge (`tools/eye_level.py`)
+
+The challenge: no trigrams — each eye orientation is a character, or eye-pairs
+index a virtual character map. The pair version is a respectable construction
+(a 5×5 Polybius square holds 25 letters; native Finnish uses ~21).
+
+**Three results, all against it:**
+
+1. **The base-5 numeral signature.** If trigrams are 3-digit base-5 numbers
+   capped at 82, the first eye of each trigram can never show orientation 4
+   (82 = 312₅), and orientation 3 should appear there only ~100 times
+   (values 75-82). Observed slot-0 counts: **317 / 312 / 310 / 97 / 0.**
+   Slots 1 and 2 are near-uniform. A code treating every eye as an equal
+   character has no reason to lock one orientation out of every third
+   position. This is the shape of numbers, not letters.
+
+2. **Pair readings are flat.** A fixed grid map is a substitution, and
+   substitution preserves IoC. Finnish letters have normalised IoC 2.00, so
+   eye-pairs read as Finnish letters must show ~2.0. Observed, both pairings:
+   **1.11-1.12**, exactly matching a null that keeps trigram content and
+   shuffles order (|z| ≤ 1.35 on every statistic, deduped). All 25 pair values
+   occur. No lumpiness, no grid alphabet.
+
+3. **No sub-trigram structure at all.** Single-eye bigram statistics sit at
+   chance against the trigram-preserving null (z = −0.41). Whatever code the
+   eyes carry, it carries no information below the trigram level that the
+   numeral reading does not already explain.
+
+**Verdict: eyes-as-characters and pair-grid-alphabet readings FALSIFIED as
+direct or substitution readings.** Honest limit: a grid alphabet followed by a
+strong cipher would also look flat and is not excluded — but then the cipher,
+not the alphabet, is the puzzle again, and the base-5 slot signature still
+argues the symbols are numbers.
+
+**The dedup trap fired a third time.** The first run of the pair-adjacency test
+used raw messages and showed z = +2.94 (p = 0.004) at offset 1 — dissolved
+entirely by dedup (z = +0.82). The triple-counted E1/W1/E2 header did it again.
+Every repetition statistic in this project now runs on deduped segments; there
+are no remaining exceptions.
+
+---
+
 ## 2026-08-10 — Reading order validated; real Finnish replaces the synthetic control; gap 4 may be linguistic
 
 Three challenges taken up: that the community may be wrong about trigrams, that
@@ -473,7 +565,9 @@ differences preserves their multiset and makes the test vacuous (sd = 0).
 - `tools/h2_plaintext_autokey.py` — H2 sub-case 1 closed form, sub-case 2 scoped.
 - `tools/reading_order.py` — grouping, direction and columnar tests.
 - `tools/finnish.py`, `tools/finnish_litmus.py` — Finnish syllable model and the real-plaintext litmus battery.
-- `tools/test_tools.py` — 53 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
+- `tools/h6_hybrid.py` — the hybrid battery with best-key analysis.
+- `tools/eye_level.py` — single-eye, pair and grid-alphabet readings.
+- `tools/test_tools.py` — 63 tests: round-trip properties, dedup correctness, battery-power checks, and a guard asserting no simulated mechanism reproduces the gap-4 profile.
 
 `python3 tools/verify_constraints.py` — 23/23 pass.
-`python3 tools/test_tools.py` — 53/53 pass.
+`python3 tools/test_tools.py` — 63/63 pass.

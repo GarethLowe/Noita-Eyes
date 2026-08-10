@@ -28,7 +28,11 @@ from resync_analysis import (agreement_runs, deck_pair,  # noqa: E402
 from h2_plaintext_autokey import derive, parity_iocs  # noqa: E402
 from reading_order import (adjacent, columnar, digits,  # noqa: E402
                            regroup, shared_from_end, shared_from_start)
-from finnish import load_table, normalise, syllabify  # noqa: E402
+from finnish import load_runs, load_table, normalise, syllabify  # noqa: E402
+from h6_hybrid import (dec_ct_p4, dec_pt_p4, enc_ct_p4,  # noqa: E402
+                       enc_pt_p4, enc_pt_p4_fix, enc_tab_ptk)
+from h6_hybrid import divergent_pair as h6_divergent_pair  # noqa: E402
+from eye_level import eye_stream, norm_ioc, pair_values  # noqa: E402
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -424,6 +428,94 @@ class TestFinnish(unittest.TestCase):
         t = load_table()
         self.assertGreater(t["rep_gap2"] * 1027, 5,
                            "if this drops near zero, H2's obstacle dissolves")
+
+
+class TestH6(unittest.TestCase):
+    def setUp(self):
+        self.rng = random.Random(8)
+        self.runs = load_runs()
+
+    def test_ct_p4_round_trip(self):
+        for _ in range(20):
+            p = language_like(self.rng, 90)
+            key = [self.rng.randrange(N) for _ in range(4)]
+            self.assertEqual(dec_ct_p4(enc_ct_p4(p, key, None), key), p)
+
+    def test_pt_p4_round_trip(self):
+        for _ in range(20):
+            p = language_like(self.rng, 90)
+            key = [self.rng.randrange(N) for _ in range(4)]
+            self.assertEqual(dec_pt_p4(enc_pt_p4(p, key, None), key), p)
+
+    def test_fix_variant_never_repeats_adjacent(self):
+        for _ in range(20):
+            p = [self.rng.randrange(N) for _ in range(400)]
+            key = [self.rng.randrange(N) for _ in range(4)]
+            c = enc_pt_p4_fix(p, key, None)
+            self.assertEqual(
+                sum(1 for i in range(1, len(c)) if c[i] == c[i - 1]), 0)
+
+    def test_pt_chained_hybrids_reconverge_and_ct_does_not(self):
+        rng = random.Random(4)
+        pa, pb = h6_divergent_pair(rng, self.runs)
+        key = [rng.randrange(N) for _ in range(4)]
+        self.assertGreaterEqual(
+            len(reconvergences(enc_pt_p4(pa, key, None),
+                               enc_pt_p4(pb, key, None))), 1)
+        self.assertEqual(
+            reconvergences(enc_ct_p4(pa, key, None),
+                           enc_ct_p4(pb, key, None)), [])
+
+    def test_table_variant_is_statistically_identical_to_untabled(self):
+        """A fixed bijection cannot change repeat counts at any gap."""
+        rng = random.Random(5)
+        p = [rng.randrange(N) for _ in range(500)]
+        key = [rng.randrange(N) for _ in range(4)]
+        pi = list(range(N))
+        rng.shuffle(pi)
+        a, b = enc_pt_p4(p, key, pi), enc_tab_ptk(p, key, pi)
+        for k in (1, 2, 3, 4, 5):
+            ra = sum(1 for i in range(k, len(a)) if a[i] == a[i - k])
+            rb = sum(1 for i in range(k, len(b)) if b[i] == b[i - k])
+            self.assertEqual(ra, rb, f"gap {k}")
+
+
+class TestEyeLevel(unittest.TestCase):
+    def test_eye_stream_is_three_eyes_per_trigram(self):
+        msgs = load()
+        for k in ORDER:
+            es = eye_stream(msgs[k])
+            self.assertEqual(len(es), 3 * len(msgs[k]))
+            self.assertTrue(all(0 <= x < 5 for x in es))
+
+    def test_slot0_never_shows_orientation_4(self):
+        """The base-5 numeral signature, asserted on the real data."""
+        msgs = load()
+        for k in ORDER:
+            es = eye_stream(msgs[k])
+            self.assertTrue(all(es[i] != 4 for i in range(0, len(es), 3)))
+
+    def test_pair_values_cover_0_to_24(self):
+        pv = pair_values([0, 0, 4, 4, 2, 3], 0)
+        self.assertEqual(pv, [0, 24, 13])
+
+    def test_grid_alphabet_control_fires(self):
+        """Power check: real Finnish letters through a 5x5 grid must show a
+        high IoC, or the flat observed value would prove nothing."""
+        t = load_table()
+        letters = sorted(t["letter_counts"], key=t["letter_counts"].get,
+                         reverse=True)[:25]
+        grid = {ch: i for i, ch in enumerate(letters)}
+        text = normalise(
+            "olipa kerran seitseman veljesta jotka asuivat metsassa "
+            "ja heidan aitinsa oli kuollut ja isansa myos")
+        vals = [grid[ch] for ch in text if ch in grid]
+        self.assertGreater(norm_ioc(vals, 25), 1.5)
+
+    def test_observed_pair_ioc_is_flat(self):
+        segs = segments(load())
+        flat = [x for s in segs for x in pair_values(eye_stream(s), 0)]
+        self.assertLess(norm_ioc(flat, 25), 1.25)
 
 
 class TestDataIntegrity(unittest.TestCase):

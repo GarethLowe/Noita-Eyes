@@ -26,6 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eyes import N  # noqa: E402
 
 CACHE = Path(__file__).resolve().parent.parent / "data" / "finnish_syllables.json"
+RUNS = Path(__file__).resolve().parent.parent / "data" / "finnish_runs.json"
+RUNS_CAP = 60000
 
 VOWELS = set("aeiouyäö")
 DIPHTHONGS = {
@@ -100,10 +102,27 @@ def build(path, out=CACHE):
         "coverage_top83": sum(counts[s] for s in top) / len(syls),
     }
     out.write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    # Cache actual plaintext runs too, so downstream tools (h6_hybrid.py etc.)
+    # can encrypt real Finnish without needing the source text present.
+    runs, total = [], 0
+    for r in top83_stream(text):
+        if len(r) >= 5:
+            runs.append(r)
+            total += len(r)
+        if total >= RUNS_CAP:
+            break
+    RUNS.write_text(json.dumps(runs))
     return data
 
 
 def load_table(path=CACHE):
+    if not path.exists():
+        raise SystemExit(f"missing {path}; run: python3 tools/finnish.py --build FILE")
+    return json.loads(path.read_text())
+
+
+def load_runs(path=RUNS):
+    """Cached Finnish plaintext runs as lists of symbols 0..82."""
     if not path.exists():
         raise SystemExit(f"missing {path}; run: python3 tools/finnish.py --build FILE")
     return json.loads(path.read_text())
